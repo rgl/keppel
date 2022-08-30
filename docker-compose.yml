@@ -1,0 +1,80 @@
+# see https://github.com/compose-spec/compose-spec/blob/master/spec.md
+# see https://github.com/opencontainers/image-spec/blob/master/annotations.md
+services:
+  postgres:
+    # see https://hub.docker.com/_/postgres
+    # see https://github.com/docker-library/postgres/tree/master/14/bullseye
+    image: postgres:14-bullseye
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    restart: on-failure
+  keppel:
+    depends_on:
+      - postgres
+    build: .
+    ports:
+      - 9006:9006
+    networks:
+      default:
+        aliases:
+          - keppel.test
+    environment:
+      - KEPPEL_API_LISTEN_ADDRESS=:9006
+      - KEPPEL_API_PUBLIC_FQDN=keppel.test:9006
+      - KEPPEL_DB_CONNECTION_OPTIONS=sslmode=disable
+      - KEPPEL_DB_HOSTNAME=postgres
+      - KEPPEL_DB_USERNAME=postgres
+      - KEPPEL_DB_PASSWORD=password
+      - KEPPEL_DB_NAME=keppel
+      - KEPPEL_USERNAME=keppel
+      - KEPPEL_PASSWORD=password
+      - KEPPEL_DRIVER_AUTH=trivial
+      - KEPPEL_DRIVER_FEDERATION=trivial
+      - KEPPEL_DRIVER_INBOUND_CACHE=trivial
+      - KEPPEL_DRIVER_STORAGE=filesystem
+      - KEPPEL_FILESYSTEM_PATH=/data
+      # NB this was generated using openssl genpkey -algorithm ed25519 -out -
+      - |
+        KEPPEL_ISSUER_KEY=
+        -----BEGIN PRIVATE KEY-----
+        MC4CAQAwBQYDK2VwBCIEIJl89wkwd5hrsaX9k3N3qLAa4fMrlz196Ykv1/27pg8j
+        -----END PRIVATE KEY-----
+    command:
+      - server
+      - api
+    volumes:
+      - data:/data
+    restart: on-failure
+  janitor:
+    depends_on:
+      - keppel
+    build: .
+    environment:
+      - KEPPEL_API_PUBLIC_FQDN=keppel.test:9006
+      - KEPPEL_DB_CONNECTION_OPTIONS=sslmode=disable
+      - KEPPEL_DB_HOSTNAME=postgres
+      - KEPPEL_DB_USERNAME=postgres
+      - KEPPEL_DB_PASSWORD=password
+      - KEPPEL_DRIVER_AUTH=trivial
+      - KEPPEL_USERNAME=keppel
+      - KEPPEL_PASSWORD=password
+      - KEPPEL_DRIVER_FEDERATION=trivial
+      - KEPPEL_DRIVER_STORAGE=in-memory-for-testing
+      - KEPPEL_DRIVER_INBOUND_CACHE=trivial
+      - |
+        KEPPEL_ISSUER_KEY=
+        -----BEGIN PRIVATE KEY-----
+        MC4CAQAwBQYDK2VwBCIEIJl89wkwd5hrsaX9k3N3qLAa4fMrlz196Ykv1/27pg8j
+        -----END PRIVATE KEY-----
+    command:
+      - server
+      - janitor
+    restart: on-failure
+volumes:
+  postgres:
+  data:

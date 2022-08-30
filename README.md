@@ -11,6 +11,7 @@ In this document:
 - [History](#history)
 - [Terminology](#terminology)
 - [Usage](#usage)
+- [Usage (docker compose)](#usage-docker-compose)
 
 In other documents:
 
@@ -79,3 +80,117 @@ as well as server commands.
 
 - For how to use the client commands, run `keppel --help`.
 - For how to deploy the server components, please refer to the [operator guide](./docs/operator-guide.md).
+
+## Usage (docker compose)
+
+Configure your `hosts` file:
+
+```bash
+echo '127.0.0.1 keppel.test' | sudo bash -c 'cat >>/etc/hosts'
+```
+
+Start the environment:
+
+```bash
+docker compose up --build
+```
+
+Execute the next commands in a new shell.
+
+Create the `keppel` tenant and a couple of accounts:
+
+```bash
+docker compose exec --user root keppel chown nobody:nobody /data
+docker compose exec --user postgres postgres psql keppel <<'EOF'
+insert into quotas(auth_tenant_id, manifests) values('keppel', 10000);
+insert into accounts(auth_tenant_id, name) values('keppel', 'ruilopes');
+insert into accounts(auth_tenant_id, name) values('keppel', 'library');
+EOF
+```
+
+Push an image:
+
+```bash
+source_image='docker.io/ruilopes/example-docker-buildx-go:v1.10.0'
+image='keppel.test:9006/ruilopes/example-docker-buildx-go:v1.10.0'
+platform='linux/amd64'
+#platform='windows/amd64:10.0.20348.825'
+#platform='all'
+crane manifest --insecure "$source_image" | jq
+crane copy --insecure --platform "$platform" "$source_image" "$image"
+crane manifest --insecure "$image" | jq
+```
+
+List what ended up in the keppel `data` volume:
+
+```bash
+docker compose exec keppel find /data -type f
+```
+
+It should be something alike:
+
+```
+/data/keppel/ruilopes/m/example-docker-buildx-go/sha256:2ebebdde436cbbfea50bf5a4eb20b673029dbe7a68577b4fcf42aec122b5988a
+/data/keppel/ruilopes/b/7e95c2bfb24e36d0bea10e05f985aa944647a1d3c6917427939d8b4556449732
+/data/keppel/ruilopes/b/192054e7ff72dd5751e12a8b0049ce72709fe182ec081188b53597a3235b36b0
+/data/keppel/ruilopes/b/5cfe44bca4a32d425fb1ae6171d62b46903abaa6a679d37272c890bb72cbd18b
+```
+
+Execute the image:
+
+```bash
+docker rmi "$image"
+docker system prune --all --force
+docker run --rm "$image"
+```
+
+Delete the image:
+
+```bash
+crane delete --insecure "$image"
+```
+
+Destroy the environment (and all data) with:
+
+```bash
+docker compose down --volumes --remove-orphans --timeout=0
+```
+
+### Example commands
+
+List all the container images:
+
+```bash
+crane catalog --insecure keppel.test:9006 | while read name; do
+  crane ls --insecure "keppel.test:9006/$name" | while read tag; do
+    echo "keppel.test:9006/$name:$tag"
+  done
+done
+```
+
+Execute some example commands in the `keppel` database:
+
+```bash
+docker compose exec --user postgres postgres psql keppel <<'EOF'
+\d
+\d quotas
+\d accounts
+\d repos
+\d tags
+\d manifests
+select * from quotas;
+select * from accounts;
+select * from repos;
+select * from tags;
+select * from manifests;
+EOF
+```
+
+Execute some example keppel requests:
+
+```bash
+http get keppel.test:9006/keppel/v1
+http get keppel.test:9006/keppel/v1/accounts
+http get keppel.test:9006/keppel/v1/accounts/keppel
+http get keppel.test:9006/keppel/v1/accounts/keppel/repositories
+```
