@@ -20,3 +20,4 @@ shell.nix
 /*.json
 /*.yaml
 privkey.pem
+docker-compose.yml
